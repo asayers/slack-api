@@ -1,7 +1,8 @@
 {-# OPTIONS_GHC -fno-warn-unused-binds #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE TemplateHaskell            #-}
-module Web.Slack.Message (sendMessage, makePingPacket, ping) where
+
+module Web.Slack.Message (sendMessage, ping) where
 
 import           Control.Applicative
 import           Control.Lens
@@ -29,13 +30,11 @@ $(deriveToJSON defaultOptions {fieldLabelModifier = map toLower . drop 7} ''Mess
 --
 -- If the message is longer than 4000 bytes then the connection will be
 -- closed.
-sendMessage :: ChannelId -> T.Text -> Slack s ()
-sendMessage cid message = do
-  conn <- use connection
-  uid  <- counter
+sendMessage :: SlackHandle -> ChannelId -> T.Text -> IO ()
+sendMessage h cid message = do
+  uid <- counter h
   let payload = MessagePayload uid "message" cid message
-  slackLog payload
-  liftIO $ WS.sendTextData conn (encode payload)
+  WS.sendTextData (_shConnection h) (encode payload)
 
 data PingPayload = PingPayload
                  { pingId :: Int
@@ -45,19 +44,11 @@ data PingPayload = PingPayload
 
 $(deriveToJSON defaultOptions {fieldLabelModifier = map toLower . drop 4} ''PingPayload)
 
-makePingPacket :: Slack s (IO ())
-makePingPacket = do
-  conn <- use connection
-  uid <- counter
-  now <- round <$> liftIO getPOSIXTime
-  let payload = PingPayload uid "ping" now
-  return (ping conn payload)
-
-
 -- | Send a ping packet to the server
 -- The server will respond with a @pong@ `Event`.
-ping :: WS.Connection -> PingPayload -> IO ()
-ping conn payload =
-  WS.sendTextData conn (encode payload)
-
-
+ping :: SlackHandle -> IO ()
+ping h = do
+  uid <- counter h
+  now <- round <$> getPOSIXTime
+  let payload = PingPayload uid "ping" now
+  WS.sendTextData (_shConnection h) (encode payload)
