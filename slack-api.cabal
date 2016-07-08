@@ -82,7 +82,8 @@ Library
     errors >= 1.4 && < 3.0,
     monad-loops >= 0.4,
     transformers >= 0.3,
-    time >= 1.4
+    time >= 1.4,
+    hashable >= 1.2
 
 Test-Suite tests
     Type: exitcode-stdio-1.0
