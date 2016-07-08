@@ -7,11 +7,12 @@
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE TemplateHaskell            #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+
 module Web.Slack.State where
 
-import           Control.Applicative
+import           Control.Lens
 import           Control.Monad.IO.Class
-import           Control.Monad.RWS
+import           Control.Monad.Reader
 import           Data.IORef
 import qualified Network.WebSockets        as WS
 import           Web.Slack.Types
@@ -25,15 +26,18 @@ data SlackHandle = SlackHandle
     , _shCounter    :: IORef Int
     }
 
-newtype Slack s a = Slack { runSlack :: RWST SlackHandle () s IO a }
-  deriving (Monad, Functor, Applicative, MonadReader SlackHandle, MonadState s, MonadIO)
+type Slack = ReaderT SlackHandle IO
 
-type SlackBot s =  Event -> Slack s ()
+makeLenses ''SlackHandle
 
-slackLog :: Show a => a -> MonadIO m => m ()
-slackLog = liftIO . print
+getMessageId :: Slack Int
+getMessageId = do
+    counter <- view shCounter
+    liftIO $ modifyIORef counter (+1)
+    liftIO $ readIORef counter
 
-counter :: SlackHandle -> IO Int
-counter h = do
-    modifyIORef (_shCounter h) (+1)
-    readIORef (_shCounter h)
+getConfig :: Slack SlackConfig
+getConfig = view shConfig
+
+getSession :: Slack SlackSession
+getSession = view shSession

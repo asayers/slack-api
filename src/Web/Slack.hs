@@ -30,25 +30,24 @@
 -- > main :: IO ()
 -- > main = runBot myConfig echoBot ()
 --
-module Web.Slack ( runBot
-                 -- Re-exports
-                 , Slack(..)
-                 , SlackBot
+module Web.Slack
+    ( Slack, runSlack
+    , getEvent
+    , getSession
+    , getConfig
 
-                   -- * Low-level API
-                 , SlackHandle
-                 , withSlack
-                 , getEvent
-                 , getSession
-                 , module Web.Slack.Types
-                 , module Web.Slack.Config
-                 ) where
+      -- * Handle-based API
+    , SlackHandle, withSlackHandle
+
+      -- * Re-exports
+    , module Web.Slack.Types
+    , module Web.Slack.Config
+    ) where
 
 import           Control.Lens
-import           Control.Monad.RWS
+import           Control.Monad.Reader
 import           Data.Aeson.Lens
 import qualified Data.ByteString.Lazy       as B
-import qualified Data.ByteString.Lazy.Char8 as BC
 import           Data.IORef
 import           Data.Maybe
 import qualified Data.Text                  as T
@@ -68,22 +67,12 @@ import           Web.Slack.Config
 import           Web.Slack.State
 import           Web.Slack.Types
 
--- | Run a `SlackBot`. The supplied bot will respond to all events sent by
--- the Slack RTM API.
---
--- Be warned that this function will throw an `IOError` if the connection
--- to the Slack API fails.
-runBot :: SlackConfig -> SlackBot s -> s -> IO ()
-runBot conf handleEvent initialSt =
-    withSlack conf $ \h -> void $ runRWST bot h initialSt
-  where
-    bot = forever $ runSlack . handleEvent =<< liftIO . getEvent =<< ask
 
--------------------------------------------------------------------------------
--- Low-level API
+runSlack :: SlackConfig -> Slack a -> IO a
+runSlack conf x = withSlackHandle conf (runReaderT x)
 
-withSlack :: SlackConfig -> (SlackHandle -> IO a) -> IO a
-withSlack conf fn = do
+withSlackHandle :: SlackConfig -> (SlackHandle -> IO a) -> IO a
+withSlackHandle conf fn = do
     r <- W.get rtmStartUrl
     let Just (BoolPrim ok) = r ^? W.responseBody . key "ok"  . _Primitive
     unless ok $ do
@@ -129,23 +118,26 @@ withSlack conf fn = do
       name <- URI.uriRegName <$> URI.uriAuthority uri
       return (name, URI.uriPath uri)
 
-
-getEvent :: SlackHandle -> IO Event
-getEvent h = do
-    raw <- WS.receiveData $ _shConnection h
-    let (msg :: Either String Event) = eitherDecode raw
-    case msg of
-      Left e -> do
-          BC.putStrLn raw
-          putStrLn e
-          putStrLn "Please report this failure to the github issue tracker"
-          getEvent h
-      Right event@(UnknownEvent e) -> do
-          print $ e
-          putStrLn $ "Failed to parse to a known event"
-          putStrLn $ "Please report this failure to the github issue tracker"
-          return event
-      Right event -> return event
-
-getSession :: SlackHandle -> SlackSession
-getSession = _shSession
+-- | Returns the next event. If the queue is empty, blocks until an event
+-- is recieved.
+getEvent :: Slack Event
+getEvent = do
+    h <- ask
+    raw <- liftIO $ WS.receiveData $ _shConnection h
+    case eitherDecode raw of
+        Left e -> do
+            liftIO $ putStrLn $ unlines
+                [ show raw
+                , e
+                , "Please report this failure to the github issue tracker"
+                ]
+            getEvent
+        Right event@(UnknownEvent val) -> do
+            liftIO $ putStrLn $ unlines
+                [ show val
+                , "Failed to parse to a known event"
+                , "Please report this failure to the github issue tracker"
+                ]
+            return event
+        Right event ->
+            return event
