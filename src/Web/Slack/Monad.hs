@@ -19,9 +19,9 @@ module Web.Slack.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Reader
 import qualified Data.Text as T
-import Web.Slack.Config
 import qualified Web.Slack.Internal as I
 import Web.Slack.Types
+import Web.Slack.WebAPI
 
 -- | Some useful instances:
 --

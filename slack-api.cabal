@@ -32,7 +32,7 @@ Library
   Exposed-Modules: Web.Slack,
                    Web.Slack.Internal,
                    Web.Slack.Monad,
-                   Web.Slack.Config,
+                   Web.Slack.WebAPI,
                    Web.Slack.Types,
                    Web.Slack.Types.Base,
                    Web.Slack.Types.Bot,

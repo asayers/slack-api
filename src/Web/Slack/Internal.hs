@@ -12,14 +12,15 @@ module Web.Slack.Internal
     ) where
 
 import Control.Lens
+import Control.Monad.Except
 import Control.Monad.Reader
 import Data.Aeson
 import Data.Aeson.Lens
 import qualified Data.ByteString.Lazy as B
 import Data.IORef
 import Data.Maybe
-import Data.Time.Clock.POSIX
 import qualified Data.Text as T
+import Data.Time.Clock.POSIX
 import qualified Network.Socket as S
 import qualified Network.URI as URI
 import qualified Network.WebSockets as WS
@@ -29,8 +30,8 @@ import qualified OpenSSL as SSL
 import qualified OpenSSL.Session as SSL
 import qualified System.IO.Streams.Internal as StreamsIO
 import qualified System.IO.Streams.SSL as Streams
-import Web.Slack.Config
 import Web.Slack.Types
+import Web.Slack.WebAPI
 
 data SlackHandle = SlackHandle
     { _shConfig     :: SlackConfig
@@ -43,11 +44,11 @@ makeLenses ''SlackHandle
 
 withSlackHandle :: SlackConfig -> (SlackHandle -> IO a) -> IO a
 withSlackHandle conf fn = do
-    r <- W.get rtmStartUrl
-    let Just (BoolPrim ok) = r ^? W.responseBody . key "ok"  . _Primitive
-    unless ok $ do
-        putStrLn "Unable to connect"
-        ioError . userError . T.unpack $ r ^. W.responseBody . key "error" . _String
+    r'e <- runExceptT $ makeSlackCall conf "rtm.start" id
+    let handleStartErr msg = do
+          putStrLn "Unable to connect"
+          ioError (userError msg)
+    r <- either handleStartErr return r'e
     let Just url = r ^? W.responseBody . key "url" . _String
     (sessionInfo :: SlackSession) <- case eitherDecode (r ^. W.responseBody) of
         Left e -> print (r ^. W.responseBody) >> (ioError . userError $ e)
@@ -65,10 +66,6 @@ withSlackHandle conf fn = do
               }
         WS.forkPingThread conn 10
         fn h
-  where
-    rtmStartUrl :: String
-    rtmStartUrl = "https://slack.com/api/rtm.start?token="
-                    ++ (conf ^. slackApiToken)
 
 parseWebSocketUrl :: String -> Maybe (String, String)
 parseWebSocketUrl url = do
