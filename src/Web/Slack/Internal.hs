@@ -1,5 +1,6 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module Web.Slack.Internal
     ( SlackHandle
@@ -11,7 +12,8 @@ module Web.Slack.Internal
     , sendPing
     ) where
 
-import Control.Lens
+import Control.Error
+import Control.Lens hiding ((??))
 import Control.Monad.Except
 import Control.Monad.Reader
 import Data.Aeson
@@ -43,20 +45,13 @@ data SlackHandle = SlackHandle
 makeLenses ''SlackHandle
 
 withSlackHandle :: SlackConfig -> (SlackHandle -> IO a) -> IO a
-withSlackHandle conf fn = do
-    r'e <- runExceptT $ makeSlackCall conf "rtm.start" id
-    let handleStartErr msg = do
-          putStrLn "Unable to connect"
-          ioError (userError msg)
-    r <- either handleStartErr return r'e
-    let Just url = r ^? W.responseBody . key "url" . _String
-    (sessionInfo :: SlackSession) <- case eitherDecode (r ^. W.responseBody) of
-        Left e -> print (r ^. W.responseBody) >> (ioError . userError $ e)
-        Right res -> return res
-    putStrLn "rtm.start call successful"
-    let urlErr = error $ "Couldn't parse WebSockets URL: " ++ T.unpack url
-    let (host, path) = fromMaybe urlErr $ parseWebSocketUrl (T.unpack url)
-    withWebSocket host 443 path $ \conn -> do
+withSlackHandle conf fn = fromExceptT (ioError . userError) $ do
+    r <- makeSlackCall conf "rtm.start" id
+    url <- (r ^? W.responseBody . key "url" . _String) ?? "Couldn't parse response"
+    sessionInfo <- either throwError return $ eitherDecode (r ^. W.responseBody)
+    liftIO $ putStrLn "rtm.start call successful"
+    (host, path) <- parseWebSocketUrl (T.unpack url)
+    liftIO $ withWebSocket host 443 path $ \conn -> do
         freshCounter <- newIORef 0
         let h = SlackHandle
               { _shConfig = conf
@@ -67,10 +62,10 @@ withSlackHandle conf fn = do
         WS.forkPingThread conn 10
         fn h
 
-parseWebSocketUrl :: String -> Maybe (String, String)
+parseWebSocketUrl :: Monad m => String -> ExceptT String m (String, String)
 parseWebSocketUrl url = do
-    uri  <- URI.parseURI url
-    name <- URI.uriRegName <$> URI.uriAuthority uri
+    uri  <- URI.parseURI url ?? ("Couldn't parse WebSockets URL: " ++ url)
+    name <- URI.uriRegName <$> URI.uriAuthority uri ?? ("No authority: " ++ url)
     return (name, URI.uriPath uri)
 
 withWebSocket :: String -> Int -> String -> (WS.Connection -> IO a) -> IO a
@@ -145,3 +140,9 @@ sendPing h = do
     let conn = h ^. shConnection
     let payload = PingPayload uid "ping" now
     WS.sendTextData conn (encode payload)
+
+-------------------------------------------------------------------------------
+-- Helpers
+
+fromExceptT :: Monad m => (e -> m a) -> ExceptT e m a -> m a
+fromExceptT handle act = runExceptT act >>= either handle return
