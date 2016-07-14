@@ -5,10 +5,12 @@
 module Web.Slack.WebAPI
     ( SlackConfig(..)
     , makeSlackCall
+
+      -- * Some functions from the slack web API
+    , rtm_start
     ) where
 
 import Control.Lens
-import Control.Monad.Reader
 import Control.Monad.Except
 import Data.Aeson.Lens
 import qualified Data.ByteString.Lazy as BL
@@ -40,3 +42,9 @@ makeSlackCall conf method setArgs = do
         Just (BoolPrim True)  -> return resp
         _ -> throwError "Couldn't parse response"
 
+rtm_start
+    :: (MonadError String m, MonadIO m)
+    => SlackConfig
+    -> m (W.Response BL.ByteString)
+rtm_start conf =
+    makeSlackCall conf "rtm.start" id

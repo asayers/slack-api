@@ -42,7 +42,7 @@ data SlackHandle = SlackHandle
 
 withSlackHandle :: SlackConfig -> (SlackHandle -> IO a) -> IO a
 withSlackHandle conf fn = fromExceptT (ioError . userError) $ do
-    r <- makeSlackCall conf "rtm.start" id
+    r <- rtm_start conf
     url <- (r ^? W.responseBody . key "url" . _String) ?? "Couldn't parse response"
     sessionInfo <- either throwError return $ eitherDecode (r ^. W.responseBody)
     liftIO $ putStrLn "rtm.start call successful"
