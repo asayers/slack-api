@@ -8,14 +8,18 @@ module Web.Slack.WebAPI
 
       -- * Some functions from the slack web API
     , rtm_start
+    , chat_postMessage
     ) where
 
 import Control.Lens
 import Control.Monad.Except
+import Data.Aeson
 import Data.Aeson.Lens
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as T
 import qualified Network.Wreq as W
+import Web.Slack.Types
 
 -- | Configuration options needed to connect to the Slack API
 data SlackConfig = SlackConfig
@@ -48,3 +52,20 @@ rtm_start
     -> m (W.Response BL.ByteString)
 rtm_start conf =
     makeSlackCall conf "rtm.start" id
+
+chat_postMessage
+    :: (MonadError String m, MonadIO m)
+    => SlackConfig
+    -> ChannelId
+    -> T.Text
+    -> [Attachment]
+    -> m (W.Response BL.ByteString)
+chat_postMessage conf (Id cid) msg as =
+    makeSlackCall conf "chat.postMessage" $
+        (W.param "channel"     .~ [cid]) .
+        (W.param "text"        .~ [msg]) .
+        (W.param "attachments" .~ [encode' as]) .
+        (W.param "as_user"     .~ ["true"])
+
+encode' :: ToJSON a => a -> T.Text
+encode' = T.decodeUtf8 . BL.toStrict . encode

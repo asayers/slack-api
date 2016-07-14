@@ -22,5 +22,18 @@ data PingPayload = PingPayload
     , pingTimestamp :: Int
     } deriving (Show)
 
+data Attachment = Attachment
+    { attachmentTitle :: T.Text
+    , attachmentFields :: [Field]
+    , attachmentFooter :: T.Text
+    }
+
+data Field = Field
+    { fieldValue :: T.Text
+    , fieldShort :: Bool
+    }
+
 $(deriveToJSON defaultOptions {fieldLabelModifier = map toLower . drop 7} ''MessagePayload)
 $(deriveToJSON defaultOptions {fieldLabelModifier = map toLower . drop 4} ''PingPayload)
+$(deriveToJSON defaultOptions {fieldLabelModifier = map toLower . drop 10} ''Attachment)
+$(deriveToJSON defaultOptions {fieldLabelModifier = map toLower . drop 5} ''Field)
