@@ -1,4 +1,4 @@
-{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE FlexibleContexts #-}
 
@@ -15,12 +15,10 @@ module Web.Slack.Internal
 import Control.Error
 import Control.Lens hiding ((??))
 import Control.Monad.Except
-import Control.Monad.Reader
 import Data.Aeson
 import Data.Aeson.Lens
-import qualified Data.ByteString.Lazy as B
+import qualified Data.ByteString.Lazy as BL
 import Data.IORef
-import Data.Maybe
 import qualified Data.Text as T
 import Data.Time.Clock.POSIX
 import qualified Network.Socket as S
@@ -41,8 +39,6 @@ data SlackHandle = SlackHandle
     , _shConnection :: WS.Connection
     , _shCounter    :: IORef Int
     }
-
-makeLenses ''SlackHandle
 
 withSlackHandle :: SlackConfig -> (SlackHandle -> IO a) -> IO a
 withSlackHandle conf fn = fromExceptT (ioError . userError) $ do
@@ -82,20 +78,20 @@ withWebSocket host port path fn =
         (i,o) <- Streams.sslToStreams ssl
         stream <- WS.makeStream
             (StreamsIO.read i)
-            (\b -> StreamsIO.write (B.toStrict <$> b) o)
+            (\b -> StreamsIO.write (BL.toStrict <$> b) o)
         WS.runClientWithStream stream host path WS.defaultConnectionOptions [] fn
 
 config :: SlackHandle -> SlackConfig
-config = view shConfig
+config = _shConfig
 
 session :: SlackHandle -> SlackSession
-session = view shSession
+session = _shSession
 
 -- | Returns the next event. If the queue is empty, blocks until an event
 -- is recieved.
 nextEvent :: SlackHandle -> IO Event
-nextEvent h = do
-    raw <- WS.receiveData $ _shConnection h
+nextEvent h@SlackHandle{..} = do
+    raw <- WS.receiveData _shConnection
     case eitherDecode raw of
         Left e -> do
             putStrLn $ unlines
@@ -115,31 +111,28 @@ nextEvent h = do
             return event
 
 nextMessageId :: SlackHandle -> IO Int
-nextMessageId h = do
-    let counter = h ^. shCounter
-    liftIO $ modifyIORef counter (+1)
-    liftIO $ readIORef counter
+nextMessageId SlackHandle{..} = do
+    liftIO $ modifyIORef _shCounter (+1)
+    liftIO $ readIORef _shCounter
 
 -- | Send a message to the specified channel.
 --
 -- If the message is longer than 4000 bytes then the connection will be
 -- closed.
 sendMessage :: SlackHandle -> ChannelId -> T.Text -> IO ()
-sendMessage h cid message = do
+sendMessage h@SlackHandle{..} cid message = do
     uid <- nextMessageId h
-    let conn = h ^. shConnection
     let payload = MessagePayload uid "message" cid message
-    WS.sendTextData conn (encode payload)
+    WS.sendTextData _shConnection (encode payload)
 
 -- | Send a ping packet to the server
 -- The server will respond with a @pong@ `Event`.
 sendPing :: SlackHandle -> IO ()
-sendPing h = do
+sendPing h@SlackHandle{..} = do
     uid <- nextMessageId h
     now <- round <$> getPOSIXTime
-    let conn = h ^. shConnection
     let payload = PingPayload uid "ping" now
-    WS.sendTextData conn (encode payload)
+    WS.sendTextData _shConnection (encode payload)
 
 -------------------------------------------------------------------------------
 -- Helpers
