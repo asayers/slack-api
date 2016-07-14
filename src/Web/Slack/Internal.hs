@@ -1,5 +1,4 @@
 {-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Web.Slack.Internal
@@ -56,6 +55,29 @@ withSlackHandle conf fn = do
     putStrLn "rtm.start call successful"
     let urlErr = error $ "Couldn't parse WebSockets URL: " ++ T.unpack url
     let (host, path) = fromMaybe urlErr $ parseWebSocketUrl (T.unpack url)
+    withWebSocket host 443 path $ \conn -> do
+        freshCounter <- newIORef 0
+        let h = SlackHandle
+              { _shConfig = conf
+              , _shConnection = conn
+              , _shSession = sessionInfo
+              , _shCounter = freshCounter
+              }
+        WS.forkPingThread conn 10
+        fn h
+  where
+    rtmStartUrl :: String
+    rtmStartUrl = "https://slack.com/api/rtm.start?token="
+                    ++ (conf ^. slackApiToken)
+
+parseWebSocketUrl :: String -> Maybe (String, String)
+parseWebSocketUrl url = do
+    uri  <- URI.parseURI url
+    name <- URI.uriRegName <$> URI.uriAuthority uri
+    return (name, URI.uriPath uri)
+
+withWebSocket :: String -> Int -> String -> (WS.Connection -> IO a) -> IO a
+withWebSocket host port path fn =
     SSL.withOpenSSL $ do
         ctx <- SSL.context
         is  <- S.getAddrInfo Nothing (Just host) (Just $ show port)
@@ -66,28 +88,10 @@ withSlackHandle conf fn = do
         ssl <- SSL.connection ctx s
         SSL.connect ssl
         (i,o) <- Streams.sslToStreams ssl
-        (stream :: WS.Stream) <- WS.makeStream  (StreamsIO.read i) (\b -> StreamsIO.write (B.toStrict <$> b) o )
-        WS.runClientWithStream stream host path WS.defaultConnectionOptions [] $
-            \conn -> do
-          freshCounter <- newIORef 0
-          let h = SlackHandle
-                { _shConfig = conf
-                , _shConnection = conn
-                , _shSession = sessionInfo
-                , _shCounter = freshCounter
-                }
-          WS.forkPingThread conn 10
-          fn h
-  where
-    port = 443 :: Int
-    rtmStartUrl :: String
-    rtmStartUrl = "https://slack.com/api/rtm.start?token="
-                    ++ (conf ^. slackApiToken)
-    parseWebSocketUrl :: String -> Maybe (String, String)
-    parseWebSocketUrl url = do
-      uri  <- URI.parseURI url
-      name <- URI.uriRegName <$> URI.uriAuthority uri
-      return (name, URI.uriPath uri)
+        stream <- WS.makeStream
+            (StreamsIO.read i)
+            (\b -> StreamsIO.write (B.toStrict <$> b) o)
+        WS.runClientWithStream stream host path WS.defaultConnectionOptions [] fn
 
 config :: SlackHandle -> SlackConfig
 config = view shConfig
