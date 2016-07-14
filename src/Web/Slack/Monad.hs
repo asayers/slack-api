@@ -2,6 +2,8 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE UndecidableInstances #-}
 
+-- | The API exposed in this module is a generalisation of the one in
+-- Web.Slack.Internal.
 module Web.Slack.Monad
     ( Slack
     , runSlack
@@ -21,6 +23,12 @@ import Web.Slack.Config
 import qualified Web.Slack.Internal as I
 import Web.Slack.Types
 
+-- | Some useful instances:
+--
+-- * Slack a
+-- * SlackHandle -> IO a
+-- * RWST SlackHandle () MyState IO a
+--
 class (MonadReader I.SlackHandle m, MonadIO m) => MonadSlack m
 instance (MonadReader I.SlackHandle m, MonadIO m) => MonadSlack m
 

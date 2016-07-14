@@ -1,31 +1,47 @@
--- |
--- This module exposes functionality to write bots which responds
--- to `Event`s sent by the RTM API. By using the user state parameter `s`
--- complicated interactions can be established.
+-- | This library contains functionality for writing slack bots which
+-- respond to `Event`s sent by the RTM API.
 --
 -- This basic example echos every message the bot recieves.
--- Other examples can be found in the
--- @<http://google.com examples>@ directory.
+-- Other examples can be found in the examples directory.
 --
--- > myConfig :: SlackConfig
--- > myConfig = SlackConfig
--- >         { _slackApiToken = "..." -- Specify your API token here
--- >         }
--- >
--- > -- type SlackBot s = Event -> Slack s ()
--- > echoBot :: SlackBot ()
--- > echoBot (Message cid _ msg _ _ _) = sendMessage cid msg
--- > echoBot _ = return ()
--- >
 -- > main :: IO ()
--- > main = runBot myConfig echoBot ()
+-- > main = runSlack myConfig echoBot
+-- >
+-- > myConfig :: SlackConfig
+-- > myConfig = SlackConfig { _slackApiToken = "your API token here" }
+-- >
+-- > echoBot :: Slack ()
+-- > echoBot = do
+-- >     event <- getNextEvent
+-- >     case event of
+-- >         (Message cid _ msg _ _ _) -> sendMessage cid msg
+-- >         _ -> return ()
+-- >     echoBot
 --
 module Web.Slack
-    ( module Web.Slack.Monad
-    , module Web.Slack.Config
+    ( -- * MonadSlack: The generic API
+      MonadSlack
+    , getConfig
+    , getSession
+    , getNextEvent
+    , sendMessage
+    , sendPing
+
+      -- * Slack: an instance of MonadSlack
+    , Slack
+    , SlackConfig(..)
+    , runSlack
+
+      -- * SlackHandle: for making alternative MonadSlack instances
+    , SlackHandle
+    , withSlackHandle
+
+      -- * The Slack RTD API
+    , Event(..)
     , module Web.Slack.Types
     ) where
 
-import Web.Slack.Config
 import Web.Slack.Monad
+import Web.Slack.WebAPI
+import Web.Slack.Internal (SlackHandle, withSlackHandle)
 import Web.Slack.Types
