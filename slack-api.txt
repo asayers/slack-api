@@ -964,6 +964,7 @@ sendMessage :: MonadSlack m => ChannelId -> Text -> m ()
 -- | Send a ping to the server, which should respond by sending a
 --   <a>Pong</a> event.
 sendPing :: MonadSlack m => m ()
+sendRichMessage :: MonadSlack m => ChannelId -> Text -> [Attachment] -> m ()
 instance (Control.Monad.Reader.Class.MonadReader Web.Slack.Internal.SlackHandle m, Control.Monad.IO.Class.MonadIO m) => Web.Slack.Monad.MonadSlack m
 
 
@@ -971,12 +972,32 @@ instance (Control.Monad.Reader.Class.MonadReader Web.Slack.Internal.SlackHandle 
 --   example of how to use this library is presented below. Other examples
 --   can be found in the "examples" directory.
 --   
---   $example
+--   <pre>
+--   main :: IO ()
+--   main = runSlack myConfig echoBot
+--   
+--   myConfig :: SlackConfig
+--   myConfig = SlackConfig { _slackApiToken = "your API token here" }
+--   
+--   -- | For all channels of which this bot is a member, it simply watches
+--   -- for messages and echoes them back to the channel they came from.
+--   echoBot :: Slack ()
+--   echoBot = do
+--       event &lt;- getNextEvent
+--       case event of
+--           (Message cid _ msg _ _ _) -&gt; sendMessage cid msg
+--           _ -&gt; return ()
+--       echoBot
+--   </pre>
 --   
 --   Confusingly, Slack exposes a number of APIs which provide different
 --   (but overlapping) functionality. This library is mostly about the RTD
 --   API, but it also has some very limited support for using the Web API.
 module Web.Slack
+class (MonadReader SlackHandle m, MonadIO m) => MonadSlack m
+
+-- | Retrieve the config used to initiate the session.
+getConfig :: MonadSlack m => m SlackConfig
 
 -- | Returns the next event in the queue. If none is available, blocks
 --   until a new event is recieved.
@@ -991,16 +1012,17 @@ getNextEvent :: MonadSlack m => m Event
 --   using <a>getNextEvent</a>.)
 getSession :: MonadSlack m => m SlackSession
 
--- | Retrieve the config used to initiate the session.
-getConfig :: MonadSlack m => m SlackConfig
-
 -- | Send a simple slack message.
 sendMessage :: MonadSlack m => ChannelId -> Text -> m ()
 
 -- | Send a ping to the server, which should respond by sending a
 --   <a>Pong</a> event.
 sendPing :: MonadSlack m => m ()
-chat_postMessage :: (MonadError String m, MonadIO m) => SlackConfig -> ChannelId -> Text -> [Attachment] -> m (Response ByteString)
+sendRichMessage :: MonadSlack m => ChannelId -> Text -> [Attachment] -> m ()
+type Slack = ReaderT SlackHandle IO
+runSlack :: SlackConfig -> Slack a -> IO a
+data SlackHandle
+withSlackHandle :: SlackConfig -> (SlackHandle -> IO a) -> IO a
 
 -- | Configuration options needed to connect to the Slack API
 data SlackConfig
@@ -1085,8 +1107,3 @@ PinAdded :: Event
 PinRemoved :: Event
 NoEvent :: Event
 UnknownEvent :: Value -> Event
-class (MonadReader SlackHandle m, MonadIO m) => MonadSlack m
-type Slack = ReaderT SlackHandle IO
-runSlack :: SlackConfig -> Slack a -> IO a
-data SlackHandle
-withSlackHandle :: SlackConfig -> (SlackHandle -> IO a) -> IO a
