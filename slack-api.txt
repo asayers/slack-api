@@ -941,18 +941,37 @@ module Web.Slack.Monad
 type Slack = ReaderT SlackHandle IO
 runSlack :: SlackConfig -> Slack a -> IO a
 
--- | Some useful instances:
+-- | A monad which supports performing slack-api operations. Some useful
+--   instances include:
 --   
 --   <ul>
---   <li>Slack a</li>
---   <li>SlackHandle -&gt; IO a</li>
---   <li>RWST SlackHandle () MyState IO a</li>
+--   <li><pre>Slack a</pre></li>
+--   <li><pre>SlackHandle -&gt; IO a</pre></li>
+--   <li><pre>RWST SlackHandle () MyState IO a</pre></li>
 --   </ul>
 class (MonadReader SlackHandle m, MonadIO m) => MonadSlack m
+
+-- | Retrieve the config used to initiate the session.
 getConfig :: MonadSlack m => m SlackConfig
+
+-- | When the connection is established, the slack server sends a bunch of
+--   session information. This is accessible here.
+--   
+--   (Caveat: this information represents the state as of the beginning of
+--   the session; it is liable to become stale. If you care about keeping
+--   an up-to-date view of this stuff, you need to track changes to it
+--   using <a>getNextEvent</a>.)
 getSession :: MonadSlack m => m SlackSession
+
+-- | Returns the next event in the queue. If none is available, blocks
+--   until a new event is recieved.
 getNextEvent :: MonadSlack m => m Event
+
+-- | Send a simple slack message.
 sendMessage :: MonadSlack m => ChannelId -> Text -> m ()
+
+-- | Send a ping to the server, which should respond by sending a
+--   <a>Pong</a> event.
 sendPing :: MonadSlack m => m ()
 instance (Control.Monad.Reader.Class.MonadReader Web.Slack.Internal.SlackHandle m, Control.Monad.IO.Class.MonadIO m) => Web.Slack.Monad.MonadSlack m
 
@@ -962,23 +981,31 @@ instance (Control.Monad.Reader.Class.MonadReader Web.Slack.Internal.SlackHandle 
 --   
 --   A basic example of how to use this library is presented below. Other
 --   examples can be found in the "examples" directory.
+--   
+--   Confusingly, Slack exposes a number of APIs which provide different
+--   (but overlapping) functionality. This library is mostly about the RTD
+--   API, but it also has some very limited support for using the Web API.
 module Web.Slack
 
--- | Some useful instances:
+-- | Returns the next event in the queue. If none is available, blocks
+--   until a new event is recieved.
+getNextEvent :: MonadSlack m => m Event
+
+-- | When the connection is established, the slack server sends a bunch of
+--   session information. This is accessible here.
 --   
---   <ul>
---   <li>Slack a</li>
---   <li>SlackHandle -&gt; IO a</li>
---   <li>RWST SlackHandle () MyState IO a</li>
---   </ul>
-class (MonadReader SlackHandle m, MonadIO m) => MonadSlack m
+--   (Caveat: this information represents the state as of the beginning of
+--   the session; it is liable to become stale. If you care about keeping
+--   an up-to-date view of this stuff, you need to track changes to it
+--   using <a>getNextEvent</a>.)
+getSession :: MonadSlack m => m SlackSession
 
--- | Configuration options needed to connect to the Slack API
-data SlackConfig
-SlackConfig :: String -> SlackConfig
+-- | Send a simple slack message.
+sendMessage :: MonadSlack m => ChannelId -> Text -> m ()
 
--- | API Token for Bot
-[_slackApiToken] :: SlackConfig -> String
+-- | Send a ping to the server, which should respond by sending a
+--   <a>Pong</a> event.
+sendPing :: MonadSlack m => m ()
 data SlackSession
 SlackSession :: Self -> Team -> [User] -> SlackTimeStamp -> [Channel] -> [Channel] -> [IM] -> [Bot] -> Text -> SlackSession
 [_slackSelf] :: SlackSession -> Self
@@ -990,15 +1017,6 @@ SlackSession :: Self -> Team -> [User] -> SlackTimeStamp -> [Channel] -> [Channe
 [_slackIms] :: SlackSession -> [IM]
 [_slackBots] :: SlackSession -> [Bot]
 [_slackCacheVersion] :: SlackSession -> Text
-getConfig :: MonadSlack m => m SlackConfig
-getSession :: MonadSlack m => m SlackSession
-type Slack = ReaderT SlackHandle IO
-runSlack :: SlackConfig -> Slack a -> IO a
-data SlackHandle
-withSlackHandle :: SlackConfig -> (SlackHandle -> IO a) -> IO a
-getNextEvent :: MonadSlack m => m Event
-sendMessage :: MonadSlack m => ChannelId -> Text -> m ()
-sendPing :: MonadSlack m => m ()
 data Event
 Hello :: Event
 Message :: ChannelId -> Submitter -> Text -> SlackTimeStamp -> Maybe Subtype -> Maybe Edited -> Event
@@ -1065,3 +1083,28 @@ PinAdded :: Event
 PinRemoved :: Event
 NoEvent :: Event
 UnknownEvent :: Value -> Event
+chat_postMessage :: (MonadError String m, MonadIO m) => SlackConfig -> ChannelId -> Text -> [Attachment] -> m (Response ByteString)
+
+-- | A monad which supports performing slack-api operations. Some useful
+--   instances include:
+--   
+--   <ul>
+--   <li><pre>Slack a</pre></li>
+--   <li><pre>SlackHandle -&gt; IO a</pre></li>
+--   <li><pre>RWST SlackHandle () MyState IO a</pre></li>
+--   </ul>
+class (MonadReader SlackHandle m, MonadIO m) => MonadSlack m
+
+-- | Retrieve the config used to initiate the session.
+getConfig :: MonadSlack m => m SlackConfig
+
+-- | Configuration options needed to connect to the Slack API
+data SlackConfig
+SlackConfig :: String -> SlackConfig
+
+-- | API Token for Bot
+[_slackApiToken] :: SlackConfig -> String
+type Slack = ReaderT SlackHandle IO
+runSlack :: SlackConfig -> Slack a -> IO a
+data SlackHandle
+withSlackHandle :: SlackConfig -> (SlackHandle -> IO a) -> IO a
