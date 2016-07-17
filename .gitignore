@@ -1,0 +1,11 @@
+.stack-work
+CHANGELOG
+LICENSE
+README.md
+Setup.lhs
+default.nix
+example/
+slack-api.cabal
+src/
+stack.yaml
+tests/
