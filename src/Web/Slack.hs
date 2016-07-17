@@ -36,7 +36,7 @@ module Web.Slack
 
       -- ** The Slack Web API
       -- $webapi
-    , chat_postMessage
+    , sendRichMessage
     , module Web.Slack.WebAPI
 
       -- * Running your code

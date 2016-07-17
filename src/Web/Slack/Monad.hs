@@ -8,15 +8,19 @@ module Web.Slack.Monad
     ( Slack
     , runSlack
 
+      -- * RTD API
     , MonadSlack
     , getConfig
     , getSession
     , getNextEvent
     , sendMessage
     , sendPing
+
+      -- * Web API
+    , sendRichMessage
     ) where
 
-import Control.Monad.IO.Class
+import Control.Monad.Except
 import Control.Monad.Reader
 import qualified Data.Text as T
 import qualified Web.Slack.Internal as I
@@ -34,6 +38,9 @@ runSlack conf x = I.withSlackHandle conf (runReaderT x)
 -- | Retrieve the config used to initiate the session.
 getConfig :: MonadSlack m => m SlackConfig
 getConfig = I.config <$> ask
+
+-------------------------------------------------------------------------------
+-- RTD API
 
 -- | When the connection is established, the slack server sends a bunch of
 -- session information. This is accessible here.
@@ -58,3 +65,15 @@ sendMessage cid msg = ask >>= \h -> liftIO (I.sendMessage h cid msg)
 -- event.
 sendPing :: MonadSlack m => m ()
 sendPing = liftIO . I.sendPing =<< ask
+
+-------------------------------------------------------------------------------
+-- Web API
+
+sendRichMessage :: MonadSlack m => ChannelId -> T.Text -> [Attachment] -> m ()
+sendRichMessage cid msg as =
+    void $ crashOnError $ do
+        conf <- lift getConfig
+        chat_postMessage conf cid msg as
+
+crashOnError :: MonadIO m => ExceptT String m a -> m a
+crashOnError x = either (liftIO . ioError . userError) return =<< runExceptT x
